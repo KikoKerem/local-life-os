@@ -9,8 +9,9 @@
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test --import tsx/esm \"src/**/*.test.ts\"",
-    "model": "mlx_lm.server --model ${LLM_MODEL:-mlx-community/Qwen3.5-9B-MLX-4bit} --port ${LLM_PORT:-8088}",
-    "auth:google": "tsx scripts/oauth-google.ts"
+    "model": "/Users/keremozkefeli/local-life-os/.venv/bin/mlx_lm.server --model ${LLM_MODEL:-mlx-community/Qwen3.5-9B-MLX-4bit} --port ${LLM_PORT:-8088}",
+    "auth:google": "tsx scripts/oauth-google.ts",
+    "build:swift": "swiftc -swift-version 5 -O scripts/cal-watch.swift -o scripts/cal-watch && swiftc -swift-version 5 -O scripts/cal-write.swift -o scripts/cal-write && echo 'Swift binaries compiled'"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
@@ -25,5 +26,10 @@
     "@types/node": "^22.10.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
+  },
+  "allowScripts": {
+    "better-sqlite3@11.10.0": true,
+    "esbuild@0.28.0": true,
+    "fsevents@2.3.3": true
   }
 }

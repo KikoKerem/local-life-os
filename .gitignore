@@ -3,6 +3,9 @@ node_modules/
 .DS_Store
 *.log
 dist/
+.venv/
+scripts/cal-watch
+scripts/cal-write
 
 # Tailscale cert artifacts
 *.ts.net.key

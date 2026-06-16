@@ -39,9 +39,6 @@ function layout(evs){
 }
 
 async function load(){
-  const st = await api('/api/calendar/status');
-  if(!st.configured){ $('#toolbar').innerHTML=''; $('#out').innerHTML = `<div class="card"><h2>Google Calendar</h2><p>Add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> to <code>.env</code>, then restart.</p></div>`; return; }
-  if(!st.connected){ $('#toolbar').innerHTML=''; $('#out').innerHTML = `<div class="card"><h2>Connect Google Calendar</h2><p>Run once, authorize, reload:</p><pre style="background:var(--soft);padding:10px;border-radius:8px">cd ~/local-life-os && npm run auth:google</pre></div>`; return; }
 
   const start = monday(new Date()); start.setDate(start.getDate()+offset*7);
   const end = new Date(start); end.setDate(end.getDate()+7);
@@ -79,9 +76,9 @@ async function load(){
     const timed = events.filter(e=>!e.allDay && e.start && isoDay(new Date(e.start))===ds)
       .map(e=>{ let s=minsOf(e.start), en=e.end?minsOf(e.end):s+60; if(en<=s) en=s+60; en=Math.min(en,1440); return {id:e.id, s, e:en, summary:e.summary}; });
     const laid = layout(timed);
-    const blocks = laid.map(ev=>{ const w=100/ev.lanes; const past=new Date(byId[ev.id].end||byId[ev.id].start) < new Date();
-      return `<div class="cal-ev ${past?'past':''}" data-ev="${ev.id}" style="top:${ev.s/60*HOUR_H}px;height:${Math.max(16,(ev.e-ev.s)/60*HOUR_H-2)}px;left:calc(${ev.lane*w}% + 1px);width:calc(${w}% - 2px)">
-        <div class="ttl">${esc(ev.summary)}</div><div class="tm">${tm(byId[ev.id].start)}</div></div>`; }).join('');
+    const blocks = laid.map(ev=>{ const w=100/ev.lanes; const full=byId[ev.id]; const past=new Date(full.end||full.start) < new Date(); const col=full.calendarColor||'#4a9eff';
+      return `<div class="cal-ev ${past?'past':''}" data-ev="${ev.id}" style="top:${ev.s/60*HOUR_H}px;height:${Math.max(16,(ev.e-ev.s)/60*HOUR_H-2)}px;left:calc(${ev.lane*w}% + 1px);width:calc(${w}% - 2px);background:${col};border-left-color:${col}" title="${esc(full.calendarName||'')}">
+        <div class="ttl">${esc(ev.summary)}</div><div class="tm">${tm(full.start)}</div></div>`; }).join('');
     const now = ds===todayStr ? `<div class="cal-now" style="top:${nowMin/60*HOUR_H}px"></div>` : '';
     return `<div class="cal-col" data-day="${ds}">${blocks}${now}</div>`; }).join('');
 
@@ -92,8 +89,15 @@ async function load(){
   </div>`;
   $('#scroll').scrollTop = 7*HOUR_H;
 
-  // interactions
-  $('#out').querySelectorAll('[data-ev]').forEach(el=> el.onclick=(e)=>{ e.stopPropagation(); const ev=byId[el.dataset.ev]; if(ev?.htmlLink) window.open(ev.htmlLink,'_blank','noopener'); });
+  // interactions — show detail modal on click
+  $('#out').querySelectorAll('[data-ev]').forEach(el=> el.onclick=(e)=>{ e.stopPropagation(); const ev=byId[el.dataset.ev]; if(!ev) return;
+    const tm2=(iso)=>iso?new Date(iso).toLocaleString(undefined,{weekday:'short',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+    modal(`<h3>${esc(ev.summary)}</h3>
+      <p style="margin:4px 0;opacity:.7;font-size:13px">${esc(ev.calendarName||'')}</p>
+      <p>${esc(tm2(ev.start))}${ev.end?' → '+esc(tm2(ev.end)):''}</p>
+      ${ev.location?`<p>📍 ${esc(ev.location)}</p>`:''}
+      <p style="margin-top:12px"><button class="btn ghost" onclick="this.closest('.modal-backdrop').remove()">Close</button></p>`);
+  });
   $('#out').querySelectorAll('.cal-col').forEach(col=> col.onclick=(e)=>{ if(e.target.closest('.cal-ev')) return;
     const y=e.offsetY; const mins=Math.round((y/HOUR_H*60)/30)*30; const hh=String(Math.floor(mins/60)).padStart(2,'0'); const mm=String(mins%60).padStart(2,'0');
     addEvent(col.dataset.day, `${hh}:${mm}`); });
@@ -109,7 +113,7 @@ function eventModal(prefill){
       <div class="field"><label>End</label><div style="display:flex;gap:6px"><input id="m-ed" type="date" style="flex:1"><input id="m-et" class="tf" type="time" value="${prefill.endTime}" style="width:120px"></div></div>
       <div class="field"><label>Location</label><input id="m-loc"></div>
       <div class="field"><label>Notes</label><textarea id="m-note" rows="3"></textarea></div>
-      <div class="actions"><button class="btn ghost" id="m-cancel">Cancel</button><button class="btn" id="m-save">Add to Google</button></div>
+      <div class="actions"><button class="btn ghost" id="m-cancel">Cancel</button><button class="btn" id="m-save">Add to Apple Calendar</button></div>
     </div>`;
     document.body.appendChild(back);
     const q=(s)=>back.querySelector(s);

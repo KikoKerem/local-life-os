@@ -4,6 +4,7 @@ import { commitVault } from '../vault/git.js';
 import { addPayment } from '../finance/store.js';
 import { sanitizeCategory } from '../finance/import.js';
 import type { ProposedRecord } from './extractor.js';
+import { createAppleEvent } from '../apple/writer.js';
 
 /** Insert approved records as 'active' and commit the Vault. Finance items go to
  *  the payments table (single source of money); everything else to records. */
@@ -45,6 +46,22 @@ export async function persistRecords(db: DB, sessionId: string, records: Propose
     db.prepare(`UPDATE sessions SET status = 'persisted' WHERE id = ?`).run(sessionId);
   });
   tx(records);
+
+  // Push calendar records to Apple Calendar
+  for (const r of records) {
+    if (r.category === 'calendar') {
+      const ex = r.extras as { title?: string; start_at?: string; end_at?: string | null; location?: string | null; description?: string | null };
+      if (ex.start_at) {
+        createAppleEvent({
+          title: (ex.title as string) || r.headline,
+          start: ex.start_at,
+          end: ex.end_at ?? undefined,
+          location: ex.location ?? undefined,
+          notes: ex.description ?? undefined,
+        });
+      }
+    }
+  }
 
   await commitVault(`session ${sessionId.slice(0, 8)}: persist ${records.length} record(s)`);
   return records.length;

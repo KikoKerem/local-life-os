@@ -5,6 +5,7 @@ import { initVaultGit } from './vault/git.js';
 import { llmHealthy } from './llm/client.js';
 import { SessionManager } from './session/manager.js';
 import { startServer } from './server/index.js';
+import { startAppleCalWatcher } from './apple/watcher.js';
 
 async function main(): Promise<void> {
   log.info(`local-life-os starting — vault @ ${config.vaultPath}`);
@@ -19,6 +20,7 @@ async function main(): Promise<void> {
 
   const manager = new SessionManager(db);
   startServer(manager, db);
+  startAppleCalWatcher(db);
   log.info('ready. open the web UI and start capturing.');
 }
 

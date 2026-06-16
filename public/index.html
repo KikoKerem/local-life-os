@@ -82,29 +82,46 @@ $('#close').onclick = async () => {
   $('#status').textContent = 'review the proposed records';
 };
 
-let rec, chunks = [];
+let rec, chunks = [], recTimer;
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 $('#mic').onclick = async () => {
   try {
-    if (rec && rec.state === 'recording') { rec.stop(); $('#mic').textContent = '● Voice'; return; }
+    if (rec && rec.state === 'recording') { rec.stop(); return; }
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
       $('#status').textContent = `mic blocked: open this at http://127.0.0.1:${location.port} (browsers block the mic on non-localhost http origins like a LAN/Tailscale IP)`;
       return;
     }
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     rec = new MediaRecorder(stream); chunks = [];
-    rec.ondataavailable = (e) => chunks.push(e.data);
+    rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
     rec.onstop = async () => {
+      clearInterval(recTimer);
       stream.getTracks().forEach((t) => t.stop());
-      const blob = new Blob(chunks, { type: 'audio/webm' });
-      const b64 = btoa(String.fromCharCode(...new Uint8Array(await blob.arrayBuffer())));
+      $('#mic').textContent = '● Voice';
       $('#status').textContent = 'transcribing…';
       try {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const b64 = await blobToBase64(blob);
         const res = await api('/api/voice', { audioBase64: b64, ext: 'webm' });
-        if (res.error) { $('#status').textContent = 'voice: ' + res.error; return; }
-        captures.push(res.text); renderFeed(); $('#status').textContent = 'transcribed: "' + res.text + '"';
+        if (res.error) { $('#status').textContent = 'voice error: ' + res.error; return; }
+        $('#box').value = res.text;
+        $('#box').focus();
+        $('#box').select();
+        $('#status').textContent = '✓ transcribed — edit if needed, then press Capture';
       } catch (e) { $('#status').textContent = 'transcription failed: ' + (e.message || e); }
     };
-    rec.start(); $('#mic').textContent = '■ Stop';
+    rec.start(200);
+    let secs = 0;
+    recTimer = setInterval(() => { secs++; $('#mic').textContent = `■ Stop (${secs}s)`; }, 1000);
+    $('#mic').textContent = '■ Stop (0s)';
+    $('#status').textContent = 'recording…';
   } catch (err) {
     const m = err && err.name === 'NotAllowedError' ? 'microphone permission denied — allow it in the browser'
             : 'mic error: ' + (err.message || err);
@@ -121,6 +138,7 @@ async function loadToday(){
     $('#today').innerHTML = `📅 ${day} &nbsp;·&nbsp; London ${w(t.london)} &nbsp;·&nbsp; Istanbul ${w(t.istanbul)}`;
   } catch { $('#today').textContent=''; }
 }
+
 loadToday();
 health(); setInterval(health, 10000);
 </script>

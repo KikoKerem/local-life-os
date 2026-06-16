@@ -15,6 +15,8 @@ import { listContacts, addContact, updateContact, deleteContact, logInteraction,
 import { listProjects, projectDetail, linkEntity, unlinkEntity, type LinkKind } from '../projects/store.js';
 import { isConnected as gcalConnected, googleConfigured } from '../google/auth.js';
 import { listEvents as gcalList, createEvent as gcalCreate } from '../google/calendar.js';
+import { createAppleEvent } from '../apple/writer.js';
+import { listAppleEvents } from '../apple/lister.js';
 import type { DB } from '../vault/db.js';
 import type { SessionManager } from '../session/manager.js';
 
@@ -165,9 +167,14 @@ export function startServer(manager: SessionManager, db: DB): void {
         return send(res, 200, { records: listByCategory(db, category, { includeArchived }) });
       }
       if (req.method === 'POST' && pathname === '/api/records/add') {
-        const body = await readJson<{ category?: string; headline?: string }>(req);
+        const body = await readJson<{ category?: string; headline?: string; extras?: Record<string, unknown> }>(req);
         if (!body.category || !body.headline?.trim()) return send(res, 400, { error: 'category and headline required' });
-        return send(res, 200, { id: addRecord(db, body as { category: string; headline: string }) });
+        const id = addRecord(db, body as { category: string; headline: string; extras?: Record<string, unknown> });
+        if (body.category === 'calendar' && body.extras?.start_at) {
+          const ex = body.extras as Record<string, string>;
+          createAppleEvent({ title: body.headline!, start: ex['start_at']!, end: ex['end_at'] ?? undefined, location: ex['location'] ?? undefined, notes: ex['description'] ?? undefined });
+        }
+        return send(res, 200, { id });
       }
       if (req.method === 'POST' && pathname === '/api/records/update') {
         const { id, ...patch } = await readJson<{ id?: string }>(req);
@@ -249,24 +256,24 @@ export function startServer(manager: SessionManager, db: DB): void {
         return send(res, 200, { ok: unlinkEntity(db, projectId, kind, refId) });
       }
 
-      // ---- Google Calendar (cloud-connected, opt-in) ----
+      // ---- Calendar (Apple Calendar via EventKit — all your calendars) ----
       if (req.method === 'GET' && pathname === '/calendar') {
         return send(res, 200, readFileSync(join(PUBLIC, 'calendar.html'), 'utf8'), 'text/html');
       }
       if (req.method === 'GET' && pathname === '/api/calendar/status') {
-        return send(res, 200, { configured: googleConfigured(), connected: gcalConnected() });
+        return send(res, 200, { configured: true, connected: true });
       }
       if (req.method === 'GET' && pathname === '/api/calendar/events') {
         const from = url.searchParams.get('from'); const to = url.searchParams.get('to');
         if (!from || !to) return send(res, 400, { error: 'from and to required' });
-        try { return send(res, 200, { events: await gcalList(from, to) }); }
-        catch (e) { return send(res, 503, { error: String(e instanceof Error ? e.message : e) }); }
+        return send(res, 200, { events: listAppleEvents(from, to) });
       }
       if (req.method === 'POST' && pathname === '/api/calendar/events') {
-        const body = await readJson<{ summary?: string; start?: string }>(req);
+        const body = await readJson<{ summary?: string; start?: string; end?: string; allDay?: boolean; location?: string; description?: string }>(req);
         if (!body.summary || !body.start) return send(res, 400, { error: 'summary and start required' });
-        try { return send(res, 200, { event: await gcalCreate(body as { summary: string; start: string }) }); }
-        catch (e) { return send(res, 503, { error: String(e instanceof Error ? e.message : e) }); }
+        const result = createAppleEvent({ title: body.summary, start: body.start, end: body.end, isAllDay: body.allDay, location: body.location, notes: body.description });
+        if (!result.ok) return send(res, 503, { error: result.error ?? 'failed' });
+        return send(res, 200, { event: { id: result.eventId, summary: body.summary, start: body.start, end: body.end } });
       }
 
       // ---- Network ----
@@ -302,6 +309,7 @@ export function startServer(manager: SessionManager, db: DB): void {
         if (!id) return send(res, 400, { error: 'id required' });
         return send(res, 200, { ok: logInteraction(db, id, type ?? 'other', note ?? '', date) });
       }
+
       if (req.method === 'GET' && pathname === '/api/health') {
         return send(res, 200, { llm: await llmHealthy() });
       }
